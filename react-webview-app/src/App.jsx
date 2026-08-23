@@ -18,6 +18,7 @@ import {
   House,
   Leaf,
   Lightbulb,
+  MapPin,
   Minus,
   Moon,
   Plus,
@@ -143,6 +144,8 @@ function SettingsDialog({ initial, saving, error, onClose, onSave }) {
       device_key: '',
       discovery_target: initial.discovery_target ?? '255.255.255.255',
       clear_local_credentials: false,
+      weather_location_enabled: initial.weather_location_enabled ?? true,
+      refresh_weather_location: false,
     })
   }, [initial])
 
@@ -172,6 +175,37 @@ function SettingsDialog({ initial, saving, error, onClose, onSave }) {
           event.preventDefault()
           onSave(form)
         }}>
+        <div className="location-setting">
+          <div className="location-setting__icon">
+            <UiIcon icon={MapPin} size={19} />
+          </div>
+          <div className="location-setting__copy">
+            <strong>Location-based weather</strong>
+            <span>Use an approximate location to show the current outdoor weather icon.</span>
+            {initial.weather_location && form.weather_location_enabled && (
+              <small>Approximate location saved on this PC</small>
+            )}
+          </div>
+          <label className="settings-switch" aria-label="Use device location for weather">
+            <input
+              type="checkbox"
+              checked={form.weather_location_enabled}
+              onChange={(event) => update('weather_location_enabled', event.target.checked)}
+            />
+            <span aria-hidden="true" />
+          </label>
+        </div>
+        {form.weather_location_enabled && initial.weather_location && (
+          <label className="refresh-location">
+            <input
+              type="checkbox"
+              checked={form.refresh_weather_location}
+              onChange={(event) => update('refresh_weather_location', event.target.checked)}
+            />
+            <span>Update the saved location after saving</span>
+          </label>
+        )}
+
           <div className="settings-grid">
             <label>
               <span>Mobile app</span>
@@ -383,6 +417,39 @@ function App() {
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [settingsError, setSettingsError] = useState('')
   const [weather, setWeather] = useState({ icon: CloudSun, label: 'Weather unavailable' })
+  const [weatherLocationEnabled, setWeatherLocationEnabled] = useState(false)
+  const [weatherSettingsReady, setWeatherSettingsReady] = useState(false)
+  const [weatherRevision, setWeatherRevision] = useState(0)
+
+  const applyWeatherSettings = useCallback((settings) => {
+    const enabled = Boolean(settings?.weather_location_enabled)
+    const location = settings?.weather_location
+    weatherLocationRef.current = enabled && location
+      ? { latitude: Number(location.latitude), longitude: Number(location.longitude) }
+      : null
+    setWeatherLocationEnabled(enabled)
+    setWeatherSettingsReady(true)
+    if (!enabled) {
+      setWeather({ icon: CloudSun, label: 'Location weather off' })
+    }
+  }, [])
+
+  const persistWeatherLocation = useCallback(async (values) => {
+    const api = window.pywebview?.api
+    if (!api) return null
+    try {
+      const response = await api.save_weather_location(values)
+      if (!response.ok) throw new Error(response.error)
+      setSettingsConfig((current) => current
+        ? { ...current, ...response.settings }
+        : current)
+      applyWeatherSettings(response.settings)
+      return response.settings
+    } catch (error) {
+      console.warn('Could not save weather location:', error)
+      return null
+    }
+  }, [applyWeatherSettings])
 
   const fetchWeatherAt = useCallback(async (latitude, longitude) => {
     try {
@@ -409,6 +476,10 @@ function App() {
   }, [])
 
   const refreshWeather = useCallback(async () => {
+    if (!weatherLocationEnabled) {
+      setWeather({ icon: CloudSun, label: 'Location weather off' })
+      return false
+    }
     const savedLocation = weatherLocationRef.current
     if (savedLocation) {
       return fetchWeatherAt(savedLocation.latitude, savedLocation.longitude)
@@ -421,18 +492,27 @@ function App() {
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
         ({ coords }) => {
-          const location = { latitude: coords.latitude, longitude: coords.longitude }
+          const location = {
+            latitude: Number(coords.latitude.toFixed(3)),
+            longitude: Number(coords.longitude.toFixed(3)),
+          }
           weatherLocationRef.current = location
+          void persistWeatherLocation({ enabled: true, ...location })
           resolve(fetchWeatherAt(location.latitude, location.longitude))
         },
-        () => {
+        (error) => {
           setWeather({ icon: CloudSun, label: 'Location unavailable' })
+          if (error?.code === 1) {
+            weatherLocationRef.current = null
+            setWeatherLocationEnabled(false)
+            void persistWeatherLocation({ enabled: false })
+          }
           resolve(false)
         },
         { enableHighAccuracy: false, timeout: 10000, maximumAge: WEATHER_REFRESH_MS },
       )
     })
-  }, [fetchWeatherAt])
+  }, [fetchWeatherAt, persistWeatherLocation, weatherLocationEnabled])
 
   const callApi = useCallback(async (
     method,
@@ -476,12 +556,13 @@ function App() {
       const response = await api.get_settings()
       if (!response.ok) throw new Error(response.error)
       setSettingsConfig(response.settings)
+      applyWeatherSettings(response.settings)
       return response.settings
     } catch (error) {
       setSettingsError(error?.message || String(error))
       return null
     }
-  }, [])
+  }, [applyWeatherSettings])
 
   const openSettings = useCallback(async () => {
     setSettingsError('')
@@ -498,6 +579,8 @@ function App() {
       const response = await api.save_settings(values)
       if (!response.ok) throw new Error(response.error)
       setSettingsConfig(response.settings)
+      applyWeatherSettings(response.settings)
+      setWeatherRevision((current) => current + 1)
       setState(null)
       const connectedState = await callApi('connect')
       if (connectedState) {
@@ -510,7 +593,7 @@ function App() {
     } finally {
       setSettingsSaving(false)
     }
-  }, [callApi])
+  }, [applyWeatherSettings, callApi])
 
   useEffect(() => {
     const start = async () => {
@@ -541,10 +624,11 @@ function App() {
   }, [busy, callApi, state])
 
   useEffect(() => {
+    if (!weatherSettingsReady) return undefined
     refreshWeather()
     const weatherTimer = window.setInterval(refreshWeather, WEATHER_REFRESH_MS)
     return () => window.clearInterval(weatherTimer)
-  }, [refreshWeather])
+  }, [refreshWeather, weatherRevision, weatherSettingsReady])
 
   const refreshAll = useCallback(async () => {
     // The two requests are independent: weather trouble must never prevent

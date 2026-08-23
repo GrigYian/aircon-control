@@ -5,7 +5,11 @@ from unittest.mock import patch
 
 from msmart.device import AirConditioner
 
-from ac_controller import ACController, configuration_summary
+from ac_controller import (
+    ACController,
+    configuration_summary,
+    save_weather_configuration,
+)
 
 
 class FakeAirConditioner:
@@ -109,6 +113,28 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("device_key", summary)
         self.assertIn("has_password", summary)
         self.assertIn("has_local_credentials", summary)
+        self.assertIn("weather_location_enabled", summary)
+        self.assertIn("weather_location", summary)
+
+    @patch("ac_controller.reload_configuration")
+    @patch("ac_controller.set_key")
+    def test_weather_location_is_rounded_before_persisting(
+        self, set_key_mock, _reload_mock
+    ) -> None:
+        save_weather_configuration(
+            {"enabled": True, "latitude": 37.98381, "longitude": 23.72754}
+        )
+
+        saved = {call.args[1]: call.args[2] for call in set_key_mock.call_args_list}
+        self.assertEqual(saved["AIRCON_WEATHER_LOCATION_ENABLED"], "true")
+        self.assertEqual(saved["AIRCON_WEATHER_LATITUDE"], "37.984")
+        self.assertEqual(saved["AIRCON_WEATHER_LONGITUDE"], "23.728")
+
+    def test_invalid_weather_location_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "outside the valid range"):
+            save_weather_configuration(
+                {"enabled": True, "latitude": 91, "longitude": 23.7}
+            )
 
     async def test_apply_maps_all_requested_controls(self) -> None:
         controller = ACController()

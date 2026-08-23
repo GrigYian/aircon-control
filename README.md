@@ -83,6 +83,10 @@ supplied as environment variables. `.env.example` documents the available keys:
 - `MIDEA_DISCOVERY_TARGET`: optional broadcast address. It defaults to the
   portable IPv4 broadcast `255.255.255.255`; a subnet-specific target can help
   when a VPN captures discovery traffic.
+- `AIRCON_WEATHER_LOCATION_ENABLED`: remembers whether location-based weather
+  is enabled. After the first successful permission grant, the app stores only
+  three-decimal approximate coordinates in LocalAppData and reuses them on
+  later launches. Disable or refresh the saved location from the gear menu.
 
 Keep `.env`, its token/key, and any account password private. You may need to allow Python
 through Windows Defender Firewall the first time discovery broadcasts are sent.

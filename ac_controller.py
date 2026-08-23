@@ -60,6 +60,7 @@ def reload_configuration() -> None:
     global MSMART_ACCOUNT, MSMART_PASSWORD, MSMART_REGION, MIDEA_ACCOUNT_CLOUD
     global DEVICE_IP, DEVICE_PORT, DEVICE_ID, DEVICE_TOKEN, DEVICE_KEY
     global DISCOVERY_TARGET
+    global WEATHER_LOCATION_ENABLED, WEATHER_LATITUDE, WEATHER_LONGITUDE
     MSMART_ACCOUNT = os.getenv("MSMART_ACCOUNT", "").strip()
     MSMART_PASSWORD = os.getenv("MSMART_PASSWORD", "")
     MSMART_REGION = os.getenv("MSMART_REGION", "DE").strip().upper() or "DE"
@@ -80,12 +81,44 @@ def reload_configuration() -> None:
         os.getenv("MIDEA_DISCOVERY_TARGET", "255.255.255.255").strip()
         or "255.255.255.255"
     )
+    WEATHER_LOCATION_ENABLED = os.getenv(
+        "AIRCON_WEATHER_LOCATION_ENABLED", "true"
+    ).strip().lower() not in {"0", "false", "no", "off"}
+    try:
+        latitude = float(os.getenv("AIRCON_WEATHER_LATITUDE", ""))
+        longitude = float(os.getenv("AIRCON_WEATHER_LONGITUDE", ""))
+        if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+            raise ValueError
+        WEATHER_LATITUDE = latitude
+        WEATHER_LONGITUDE = longitude
+    except (TypeError, ValueError):
+        WEATHER_LATITUDE = None
+        WEATHER_LONGITUDE = None
 
 
 reload_configuration()
 
 DISCOVERY_TIMEOUT_SECONDS = 7
 ENERGY_REFRESH_SECONDS = 60
+
+
+def weather_configuration() -> dict[str, Any]:
+    """Return the non-secret weather-location preference for the local UI."""
+
+    location = None
+    if (
+        WEATHER_LOCATION_ENABLED
+        and WEATHER_LATITUDE is not None
+        and WEATHER_LONGITUDE is not None
+    ):
+        location = {
+            "latitude": WEATHER_LATITUDE,
+            "longitude": WEATHER_LONGITUDE,
+        }
+    return {
+        "weather_location_enabled": WEATHER_LOCATION_ENABLED,
+        "weather_location": location,
+    }
 
 
 def configuration_summary() -> dict[str, Any]:
@@ -106,7 +139,38 @@ def configuration_summary() -> dict[str, Any]:
             (MSMART_ACCOUNT and MSMART_PASSWORD)
             or (DEVICE_ID and DEVICE_TOKEN and DEVICE_KEY)
         ),
+        **weather_configuration(),
     }
+
+
+def save_weather_configuration(values: dict[str, Any]) -> dict[str, Any]:
+    """Persist the user's weather choice and an approximate device location."""
+
+    enabled = bool(values.get("enabled", False))
+    latitude = values.get("latitude")
+    longitude = values.get("longitude")
+    if enabled and latitude is not None and longitude is not None:
+        try:
+            latitude = round(float(latitude), 3)
+            longitude = round(float(longitude), 3)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Weather coordinates must be numeric.") from exc
+        if not -90 <= latitude <= 90 or not -180 <= longitude <= 180:
+            raise ValueError("Weather coordinates are outside the valid range.")
+    else:
+        latitude = None
+        longitude = None
+
+    settings = {
+        "AIRCON_WEATHER_LOCATION_ENABLED": "true" if enabled else "false",
+        "AIRCON_WEATHER_LATITUDE": "" if latitude is None else f"{latitude:.3f}",
+        "AIRCON_WEATHER_LONGITUDE": "" if longitude is None else f"{longitude:.3f}",
+    }
+    ENV_FILE.touch(exist_ok=True)
+    for name, value in settings.items():
+        set_key(ENV_FILE, name, value, quote_mode="always")
+    reload_configuration()
+    return weather_configuration()
 
 
 def save_user_configuration(values: dict[str, Any]) -> dict[str, Any]:
@@ -155,6 +219,24 @@ def save_user_configuration(values: dict[str, Any]) -> dict[str, Any]:
     if bool(token) != bool(key):
         raise ValueError("Provide both the local token and key, or neither.")
 
+    weather_enabled = bool(
+        values.get("weather_location_enabled", current["weather_location_enabled"])
+    )
+    clear_weather_location = bool(
+        values.get("refresh_weather_location", False)
+    ) or not weather_enabled
+    saved_weather = current["weather_location"]
+    weather_latitude = (
+        ""
+        if clear_weather_location or not saved_weather
+        else f"{saved_weather['latitude']:.3f}"
+    )
+    weather_longitude = (
+        ""
+        if clear_weather_location or not saved_weather
+        else f"{saved_weather['longitude']:.3f}"
+    )
+
     settings = {
         "MSMART_ACCOUNT": account,
         "MSMART_PASSWORD": password,
@@ -166,6 +248,9 @@ def save_user_configuration(values: dict[str, Any]) -> dict[str, Any]:
         "MIDEA_DEVICE_TOKEN": token,
         "MIDEA_DEVICE_KEY": key,
         "MIDEA_DISCOVERY_TARGET": discovery_target,
+        "AIRCON_WEATHER_LOCATION_ENABLED": "true" if weather_enabled else "false",
+        "AIRCON_WEATHER_LATITUDE": weather_latitude,
+        "AIRCON_WEATHER_LONGITUDE": weather_longitude,
     }
     ENV_FILE.touch(exist_ok=True)
     for name, value in settings.items():

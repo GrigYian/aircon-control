@@ -21,6 +21,7 @@ from ac_controller import (  # noqa: E402
     ACController,
     ACState,
     configuration_summary,
+    save_weather_configuration,
     save_user_configuration,
 )
 
@@ -124,6 +125,21 @@ class AirConApi:
             with self.call_lock:
                 settings = save_user_configuration(values)
                 self.runtime.controller = ACController()
+            return {"ok": True, "settings": settings}
+        except BaseException as error:
+            return {
+                "ok": False,
+                "error": str(error).strip() or error.__class__.__name__,
+            }
+
+    def save_weather_location(self, values: dict[str, Any]) -> dict[str, Any]:
+        """Persist the location preference without reconnecting the AC."""
+
+        if not isinstance(values, dict):
+            return {"ok": False, "error": "Weather settings must be an object."}
+        try:
+            with self.call_lock:
+                settings = save_weather_configuration(values)
             return {"ok": True, "settings": settings}
         except BaseException as error:
             return {

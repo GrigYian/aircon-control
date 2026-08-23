@@ -31,7 +31,7 @@ Interface symbols use `lucide-react` components with short text labels retained
 where an icon alone would be ambiguous.
 
 On first launch, Windows may ask for location permission. If granted, the app
-rounds the coordinates to three decimal places and requests the current WMO
-weather code from Open-Meteo every 30 minutes. The outdoor Lucide icon follows
-the local day/night weather. If location permission or the weather service is
-unavailable, the normal `CloudSun` icon remains in place.
+stores only three-decimal approximate coordinates in LocalAppData and reuses
+them on later launches, so it does not request location again each time. The
+preference can be disabled or the saved location refreshed from the gear menu.
+Open-Meteo is refreshed every 30 minutes and drives the outdoor weather icon.
