@@ -1,0 +1,16 @@
+.venv/
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.idea/
+.vscode/
+.DS_Store
+build/
+release/
+packaging/AirConControl.ico
+react-webview-app/node_modules/
+react-webview-app/dist/
