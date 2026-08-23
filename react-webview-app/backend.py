@@ -21,6 +21,7 @@ from ac_controller import (  # noqa: E402
     ACController,
     ACState,
     configuration_summary,
+    remove_account_from_this_pc,
     save_weather_configuration,
     save_user_configuration,
 )
@@ -140,6 +141,20 @@ class AirConApi:
         try:
             with self.call_lock:
                 settings = save_weather_configuration(values)
+            return {"ok": True, "settings": settings}
+        except BaseException as error:
+            return {
+                "ok": False,
+                "error": str(error).strip() or error.__class__.__name__,
+            }
+
+    def remove_account(self) -> dict[str, Any]:
+        """Remove this Windows user's cloud login, preserving local pairing."""
+
+        try:
+            with self.call_lock:
+                settings = remove_account_from_this_pc()
+                self.runtime.controller = ACController()
             return {"ok": True, "settings": settings}
         except BaseException as error:
             return {

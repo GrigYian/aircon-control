@@ -18,6 +18,7 @@ import {
   House,
   Leaf,
   Lightbulb,
+  LogOut,
   MapPin,
   Minus,
   Moon,
@@ -127,8 +128,9 @@ function withOptimisticChanges(current, changes) {
   return next
 }
 
-function SettingsDialog({ initial, saving, error, onClose, onSave }) {
+function SettingsDialog({ initial, saving, error, onClose, onSave, onRemoveAccount }) {
   const [form, setForm] = useState(null)
+  const [confirmRemove, setConfirmRemove] = useState(false)
 
   useEffect(() => {
     if (!initial) return
@@ -147,6 +149,7 @@ function SettingsDialog({ initial, saving, error, onClose, onSave }) {
       weather_location_enabled: initial.weather_location_enabled ?? true,
       refresh_weather_location: false,
     })
+    setConfirmRemove(false)
   }, [initial])
 
   if (!form) return null
@@ -237,7 +240,7 @@ function SettingsDialog({ initial, saving, error, onClose, onSave }) {
                 type="password"
                 value={form.password}
                 onChange={(event) => update('password', event.target.value)}
-                placeholder={initial.has_password ? 'Saved — leave blank to keep it' : 'Mobile app password'}
+                placeholder={initial.has_password ? 'Stored securely — leave blank to keep it' : 'Mobile app password'}
                 autoComplete="current-password"
               />
             </label>
@@ -282,8 +285,45 @@ function SettingsDialog({ initial, saving, error, onClose, onSave }) {
           {error && <div className="settings-error">{error}</div>}
           <div className="settings-privacy">
             <UiIcon icon={ShieldCheck} size={17} />
-            Credentials stay in this Windows user’s local app-data folder and are never included in the application package.
+            The cloud password is protected by Windows Credential Manager. Device settings remain in this Windows user’s local app-data folder.
           </div>
+          {initial.signed_in && (
+            <div className="account-removal">
+              {!confirmRemove ? (
+                <button
+                  type="button"
+                  className="remove-account"
+                  onClick={() => setConfirmRemove(true)}
+                  disabled={saving}
+                >
+                  <UiIcon icon={LogOut} size={16} />
+                  Sign out of cloud account
+                </button>
+              ) : (
+                <div className="remove-confirmation">
+                  <span>
+                    {initial.has_local_credentials
+                      ? 'This removes the saved cloud login. Your verified local AC connection will be kept.'
+                      : 'This AC currently relies on cloud access. Signing out will disconnect it until you sign in again. Device details and weather settings will be kept.'}
+                  </span>
+                  <div>
+                    <button type="button" onClick={() => setConfirmRemove(false)} disabled={saving}>Stay signed in</button>
+                    <button
+                      type="button"
+                      className="remove-confirm"
+                      disabled={saving}
+                      onClick={async () => {
+                        await onRemoveAccount()
+                        setConfirmRemove(false)
+                      }}
+                    >
+                      {saving ? 'Signing out…' : 'Sign out'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <div className="settings-actions">
             <button type="button" className="settings-cancel" onClick={onClose} disabled={saving}>Cancel</button>
             <button type="submit" className="settings-save" disabled={saving}>{saving ? 'Saving…' : 'Save and connect'}</button>
@@ -590,6 +630,38 @@ function App() {
       }
     } catch (error) {
       setSettingsError(error?.message || String(error))
+    } finally {
+      setSettingsSaving(false)
+    }
+  }, [applyWeatherSettings, callApi])
+
+  const removeAccount = useCallback(async () => {
+    const api = window.pywebview?.api
+    if (!api) return false
+    setSettingsSaving(true)
+    setSettingsError('')
+    try {
+      const response = await api.remove_account()
+      if (!response.ok) throw new Error(response.error)
+      queuedChangesRef.current = {}
+      setSettingsConfig(response.settings)
+      applyWeatherSettings(response.settings)
+      if (response.settings.has_local_credentials) {
+        const connectedState = await callApi('connect')
+        if (connectedState) {
+          setDetail('Cloud account removed. Local control is ready')
+        } else {
+          setSettingsError('Cloud account removed, but the saved local connection could not reconnect.')
+        }
+      } else {
+        setState(null)
+        setStatus('Disconnected')
+        setDetail('Cloud account removed. Sign in again to control this AC')
+      }
+      return true
+    } catch (error) {
+      setSettingsError(error?.message || String(error))
+      return false
     } finally {
       setSettingsSaving(false)
     }
@@ -903,6 +975,7 @@ function App() {
           error={settingsError}
           onClose={() => setSettingsOpen(false)}
           onSave={saveSettings}
+          onRemoveAccount={removeAccount}
         />
       )}
     </main>

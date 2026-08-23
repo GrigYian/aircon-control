@@ -1,15 +1,27 @@
 """Network-free smoke tests for the controller's state/command mapping."""
 
+import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
 from msmart.device import AirConditioner
 
+_TEST_CONFIG = tempfile.TemporaryDirectory(prefix="aircon-control-tests-")
+os.environ["AIRCON_CONTROL_CONFIG_DIR"] = _TEST_CONFIG.name
+
 from ac_controller import (
     ACController,
     configuration_summary,
+    remove_account_from_this_pc,
+    save_user_configuration,
     save_weather_configuration,
 )
+
+
+def tearDownModule() -> None:
+    os.environ.pop("AIRCON_CONTROL_CONFIG_DIR", None)
+    _TEST_CONFIG.cleanup()
 
 
 class FakeAirConditioner:
@@ -112,6 +124,8 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("device_token", summary)
         self.assertNotIn("device_key", summary)
         self.assertIn("has_password", summary)
+        self.assertIn("signed_in", summary)
+        self.assertIn("password_storage", summary)
         self.assertIn("has_local_credentials", summary)
         self.assertIn("weather_location_enabled", summary)
         self.assertIn("weather_location", summary)
@@ -135,6 +149,50 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
             save_weather_configuration(
                 {"enabled": True, "latitude": 91, "longitude": 23.7}
             )
+
+    @patch("ac_controller.reload_configuration")
+    @patch("ac_controller.unset_key")
+    @patch("ac_controller.set_key")
+    @patch("ac_controller._store_cloud_password")
+    def test_cloud_password_is_saved_outside_env_file(
+        self, store_password, set_key_mock, _unset_key, _reload
+    ) -> None:
+        save_user_configuration(
+            {
+                "account": "person@example.com",
+                "password": "example-secret",
+                "account_cloud": "NetHome Plus",
+            }
+        )
+
+        store_password.assert_called_once_with(
+            "person@example.com", "NetHome Plus", "example-secret"
+        )
+        saved_names = {call.args[1] for call in set_key_mock.call_args_list}
+        self.assertNotIn("MSMART_PASSWORD", saved_names)
+
+    @patch("ac_controller.reload_configuration")
+    @patch("ac_controller.unset_key")
+    @patch("ac_controller.set_key")
+    @patch("ac_controller._delete_cloud_password")
+    def test_remove_account_preserves_device_credentials(
+        self, delete_password, set_key_mock, _unset_key, _reload
+    ) -> None:
+        with (
+            patch("ac_controller.MSMART_ACCOUNT", "person@example.com"),
+            patch("ac_controller.MIDEA_ACCOUNT_CLOUD", "NetHome Plus"),
+        ):
+            remove_account_from_this_pc()
+
+        delete_password.assert_called_once_with(
+            "person@example.com", "NetHome Plus"
+        )
+        saved = {call.args[1]: call.args[2] for call in set_key_mock.call_args_list}
+        self.assertEqual(saved["MSMART_ACCOUNT"], "")
+        self.assertNotIn("MIDEA_DEVICE_IP", saved)
+        self.assertNotIn("MIDEA_DEVICE_ID", saved)
+        self.assertNotIn("MIDEA_DEVICE_TOKEN", saved)
+        self.assertNotIn("MIDEA_DEVICE_KEY", saved)
 
     async def test_apply_maps_all_requested_controls(self) -> None:
         controller = ACController()

@@ -1,4 +1,5 @@
 aiohttp==3.14.3
+keyring==25.7.0
 midea-local==7.0.0
 midea-beautiful-air==0.10.7
 msmart-ng==2026.8.0

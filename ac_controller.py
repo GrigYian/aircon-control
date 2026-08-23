@@ -15,7 +15,9 @@ from pathlib import Path
 from typing import Any
 
 import aiohttp
-from dotenv import load_dotenv, set_key
+import keyring
+from dotenv import dotenv_values, load_dotenv, set_key, unset_key
+from keyring.errors import PasswordDeleteError
 from midea_beautiful import (
     appliance_state as beautiful_appliance_state,
     connect_to_cloud as beautiful_connect_to_cloud,
@@ -35,6 +37,7 @@ from msmart.discover import Discover
 # Configuration
 # ---------------------------------------------------------------------------
 APP_DATA_DIRECTORY = "AirConControl"
+CREDENTIAL_SERVICE_PREFIX = "AirCon Control"
 
 
 def _configuration_file() -> Path:
@@ -53,20 +56,93 @@ ENV_FILE = _configuration_file()
 ENV_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
+def _credential_service(account_cloud: str) -> str:
+    return f"{CREDENTIAL_SERVICE_PREFIX} - {account_cloud}"
+
+
+def _stored_cloud_password(account: str, account_cloud: str) -> str:
+    """Read a cloud password from the current Windows user's credential vault."""
+
+    if not account:
+        return ""
+    try:
+        return keyring.get_password(_credential_service(account_cloud), account) or ""
+    except Exception:
+        # A legacy plaintext value or process environment variable may still
+        # allow startup. New saves fail explicitly instead of weakening storage.
+        return ""
+
+
+def _store_cloud_password(account: str, account_cloud: str, password: str) -> None:
+    try:
+        keyring.set_password(_credential_service(account_cloud), account, password)
+    except Exception as exc:
+        raise RuntimeError(
+            "Windows Credential Manager could not save the cloud password."
+        ) from exc
+
+
+def _delete_cloud_password(account: str, account_cloud: str) -> None:
+    if not account:
+        return
+    try:
+        keyring.delete_password(_credential_service(account_cloud), account)
+    except PasswordDeleteError:
+        pass
+    except Exception as exc:
+        raise RuntimeError(
+            "Windows Credential Manager could not remove the cloud password."
+        ) from exc
+
+
+def _remove_plaintext_password() -> None:
+    """Remove the retired plaintext setting after secure storage succeeds."""
+
+    if ENV_FILE.exists() and "MSMART_PASSWORD" in dotenv_values(ENV_FILE):
+        unset_key(ENV_FILE, "MSMART_PASSWORD")
+    os.environ.pop("MSMART_PASSWORD", None)
+
+
+def _load_cloud_password(
+    account: str, account_cloud: str, file_values: dict[str, Any]
+) -> tuple[str, str | None]:
+    """Load from Credential Manager and migrate a legacy .env password once."""
+
+    stored = _stored_cloud_password(account, account_cloud)
+    legacy = str(file_values.get("MSMART_PASSWORD") or "")
+    if stored:
+        if legacy:
+            _remove_plaintext_password()
+        return stored, "Windows Credential Manager"
+    if legacy and account:
+        try:
+            _store_cloud_password(account, account_cloud, legacy)
+        except RuntimeError:
+            return legacy, "Legacy local configuration"
+        _remove_plaintext_password()
+        return legacy, "Windows Credential Manager"
+    environment_password = os.getenv("MSMART_PASSWORD", "")
+    return environment_password, "Process environment" if environment_password else None
+
+
 def reload_configuration() -> None:
     """Reload settings after the desktop setup screen writes them."""
 
+    file_values = dict(dotenv_values(ENV_FILE))
     load_dotenv(ENV_FILE, override=True)
-    global MSMART_ACCOUNT, MSMART_PASSWORD, MSMART_REGION, MIDEA_ACCOUNT_CLOUD
+    global MSMART_ACCOUNT, MSMART_PASSWORD, PASSWORD_STORAGE
+    global MSMART_REGION, MIDEA_ACCOUNT_CLOUD
     global DEVICE_IP, DEVICE_PORT, DEVICE_ID, DEVICE_TOKEN, DEVICE_KEY
     global DISCOVERY_TARGET
     global WEATHER_LOCATION_ENABLED, WEATHER_LATITUDE, WEATHER_LONGITUDE
     MSMART_ACCOUNT = os.getenv("MSMART_ACCOUNT", "").strip()
-    MSMART_PASSWORD = os.getenv("MSMART_PASSWORD", "")
     MSMART_REGION = os.getenv("MSMART_REGION", "DE").strip().upper() or "DE"
     MIDEA_ACCOUNT_CLOUD = (
         os.getenv("MIDEA_ACCOUNT_CLOUD", "NetHome Plus").strip()
         or "NetHome Plus"
+    )
+    MSMART_PASSWORD, PASSWORD_STORAGE = _load_cloud_password(
+        MSMART_ACCOUNT, MIDEA_ACCOUNT_CLOUD, file_values
     )
     DEVICE_IP = os.getenv("MIDEA_DEVICE_IP", "").strip()
     try:
@@ -127,6 +203,8 @@ def configuration_summary() -> dict[str, Any]:
     return {
         "account": MSMART_ACCOUNT,
         "has_password": bool(MSMART_PASSWORD),
+        "signed_in": bool(MSMART_ACCOUNT and MSMART_PASSWORD),
+        "password_storage": PASSWORD_STORAGE,
         "region": MSMART_REGION,
         "account_cloud": MIDEA_ACCOUNT_CLOUD,
         "account_clouds": list(SUPPORTED_CLOUDS),
@@ -177,12 +255,16 @@ def save_user_configuration(values: dict[str, Any]) -> dict[str, Any]:
     """Validate and persist settings supplied by the desktop setup screen."""
 
     current = configuration_summary()
+    previous_account = current["account"]
+    previous_cloud = current["account_cloud"]
     account = str(values.get("account", current["account"])).strip()
     password = str(values.get("password", ""))
-    if not password and account:
+    if not password and account == previous_account:
         password = MSMART_PASSWORD
     if not account:
         password = ""
+    elif not password:
+        raise ValueError("Enter the password for the selected cloud account.")
 
     region = str(values.get("region", current["region"])).strip().upper()
     account_cloud = str(
@@ -239,7 +321,6 @@ def save_user_configuration(values: dict[str, Any]) -> dict[str, Any]:
 
     settings = {
         "MSMART_ACCOUNT": account,
-        "MSMART_PASSWORD": password,
         "MSMART_REGION": region,
         "MIDEA_ACCOUNT_CLOUD": account_cloud,
         "MIDEA_DEVICE_IP": device_ip,
@@ -252,9 +333,35 @@ def save_user_configuration(values: dict[str, Any]) -> dict[str, Any]:
         "AIRCON_WEATHER_LATITUDE": weather_latitude,
         "AIRCON_WEATHER_LONGITUDE": weather_longitude,
     }
+    if account:
+        _store_cloud_password(account, account_cloud, password)
     ENV_FILE.touch(exist_ok=True)
     for name, value in settings.items():
         set_key(ENV_FILE, name, value, quote_mode="always")
+    _remove_plaintext_password()
+    if previous_account and (
+        previous_account != account or previous_cloud != account_cloud
+    ):
+        _delete_cloud_password(previous_account, previous_cloud)
+    reload_configuration()
+    return configuration_summary()
+
+
+def remove_account_from_this_pc() -> dict[str, Any]:
+    """Forget the cloud login while preserving the paired AC configuration."""
+
+    previous_account = MSMART_ACCOUNT
+    previous_cloud = MIDEA_ACCOUNT_CLOUD
+    _delete_cloud_password(previous_account, previous_cloud)
+
+    # Device details and verified LAN credentials belong to the paired AC, not
+    # to the cloud login. Keeping them lets locally authenticated units remain
+    # controllable after cloud sign-out. A cloud-only unit must sign in again.
+    settings = {"MSMART_ACCOUNT": ""}
+    ENV_FILE.touch(exist_ok=True)
+    for name, value in settings.items():
+        set_key(ENV_FILE, name, value, quote_mode="always")
+    _remove_plaintext_password()
     reload_configuration()
     return configuration_summary()
 

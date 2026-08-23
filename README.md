@@ -31,8 +31,9 @@ npm --prefix .\react-webview-app run build
 
 The gear button opens first-run connection settings. Both source and packaged
 builds store private configuration in `%LOCALAPPDATA%\AirConControl\.env`, outside
-the repository. Saved passwords, local tokens, and keys are never returned to
-the React interface or included in a release package.
+the repository. Cloud passwords are protected by Windows Credential Manager;
+local tokens and keys remain in the private LocalAppData file. Secrets are never
+returned to the React interface or included in a release package.
 
 ## Build a Windows release
 
@@ -71,8 +72,9 @@ same subnet; guest Wi-Fi/client isolation must be disabled.
 Settings are loaded from `%LOCALAPPDATA%\AirConControl\.env` and may also be
 supplied as environment variables. `.env.example` documents the available keys:
 
-- `MSMART_ACCOUNT` and `MSMART_PASSWORD`: login for the mobile app selected by
-  `MIDEA_ACCOUNT_CLOUD`.
+- `MSMART_ACCOUNT`: login name for the mobile app selected by
+  `MIDEA_ACCOUNT_CLOUD`. Enter the password in the gear menu; it is saved in
+  Windows Credential Manager. Existing `.env` passwords are migrated and removed.
 - `MSMART_REGION`: `DE` for Europe, or `US`/`KR` as appropriate.
 - `MIDEA_ACCOUNT_CLOUD`: `NetHome Plus` by default. Select `SmartHome` when
   the AC has been paired to an account created in the NetHome Plus app.
@@ -88,8 +90,12 @@ supplied as environment variables. `.env.example` documents the available keys:
   three-decimal approximate coordinates in LocalAppData and reuses them on
   later launches. Disable or refresh the saved location from the gear menu.
 
-Keep `.env`, its token/key, and any account password private. You may need to allow Python
-through Windows Defender Firewall the first time discovery broadcasts are sent.
+Keep `.env` and its local token/key private. Use **Sign out of cloud account**
+in the gear menu to delete the Windows credential while preserving device
+details and any verified local token/key. Cloud-only units disconnect until you
+sign in again. You may
+need to allow Python through Windows Defender Firewall the first time discovery
+broadcasts are sent.
 
 ## License
 

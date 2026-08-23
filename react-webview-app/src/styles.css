@@ -460,6 +460,16 @@ button:disabled { cursor: default; opacity: .38; }
 .settings-error { margin-top: 13px; padding: 10px 12px; border-radius: 12px; color: #9f2d28; background: #fff0ef; font-size: 11px; line-height: 1.4; }
 .settings-privacy { display: flex; align-items: flex-start; gap: 8px; margin-top: 13px; color: #64748b; font-size: 10px; line-height: 1.4; }
 .settings-privacy svg { flex: 0 0 auto; color: #239b6b; }
+.account-removal { margin-top: 13px; padding-top: 12px; border-top: 1px solid #e4eaf0; }
+.remove-account { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border: 1px solid #e5c7c5; border-radius: 17px; color: #a43d38; background: #fff8f7; font-size: 10px; font-weight: 650; }
+.remove-account:not(:disabled):hover { border-color: #dca9a5; color: #8f2f2b; background: #fff0ef; box-shadow: 0 5px 12px rgba(143, 47, 43, .08); }
+.remove-confirmation { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.remove-confirmation > span { max-width: 305px; color: #7f4a47; font-size: 10px; line-height: 1.4; }
+.remove-confirmation > div { display: flex; flex: 0 0 auto; gap: 6px; }
+.remove-confirmation button { height: 32px; padding: 0 11px; border: 1px solid #d9e2ec; border-radius: 16px; color: #64748b; background: #fff; font-size: 10px; font-weight: 650; }
+.remove-confirmation button:not(:disabled):hover { border-color: #bdcad8; color: #334155; background: #f5f8fb; box-shadow: 0 4px 10px rgba(39, 83, 123, .07); }
+.remove-confirmation .remove-confirm { border-color: #c9514b; color: #fff; background: #c9514b; }
+.remove-confirmation .remove-confirm:not(:disabled):hover { border-color: #aa3c37; color: #fff; background: #aa3c37; box-shadow: 0 5px 12px rgba(143, 47, 43, .15); }
 .settings-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 17px; }
 .settings-actions button { min-width: 112px; height: 40px; padding: 0 17px; border-radius: 20px; font-size: 12px; font-weight: 650; }
 .settings-cancel { border: 1px solid #d9e2ec; color: #64748b; background: transparent; }

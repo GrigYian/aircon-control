@@ -6,7 +6,8 @@ AirCon Control for Windows
 3. The PC and AC should be on the same non-guest Wi-Fi network for local discovery.
 
 NetHome Plus users with one linked AC normally need only their account email and
-password. Device IP, ID, token, and key are optional advanced settings.
+password. The password is protected by Windows Credential Manager. Device IP,
+ID, token, and key are optional advanced settings.
 
 Windows may request firewall access for local discovery and location access for
 the weather icon. Cloud control still works when reusable local credentials are
@@ -15,7 +16,10 @@ not available.
 Private settings are stored per Windows user at:
   %LOCALAPPDATA%\AirConControl\.env
 
-No account credentials or device keys are included in this distribution.
+No account credentials or device keys are included in this distribution. Use
+"Sign out of cloud account" in Settings to clear the saved Windows credential.
+Paired device details and verified local credentials are preserved; cloud-only
+units disconnect until the user signs in again.
 
 This independent community project is not affiliated with Midea or NetHome Plus.
 

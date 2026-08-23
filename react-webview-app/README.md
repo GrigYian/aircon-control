@@ -2,7 +2,8 @@
 
 This is the project's desktop interface. It imports the shared `ACController`
 from the parent project. Private settings live outside the repository in
-`%LOCALAPPDATA%\AirConControl\.env`.
+`%LOCALAPPDATA%\AirConControl\.env`; the cloud password is protected separately
+by Windows Credential Manager.
 
 The gear button provides first-run account/device setup. Source and frozen
 Windows builds use the same private LocalAppData settings location.

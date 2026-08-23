@@ -9,7 +9,7 @@ PACKAGING_DIR = Path(SPECPATH).resolve()
 PROJECT_DIR = PACKAGING_DIR.parent
 WEB_DIR = PROJECT_DIR / "react-webview-app"
 
-hiddenimports = []
+hiddenimports = ["keyring.backends.Windows"]
 def include_runtime_module(name):
     return ".test" not in name and not name.endswith(".cli")
 
