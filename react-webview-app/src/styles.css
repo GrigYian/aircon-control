@@ -220,11 +220,13 @@ button:disabled { cursor: default; opacity: .38; }
 .dial__svg { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
 .dial__svg:active { cursor: grabbing; }
 .dial__svg.is-disabled { cursor: default; opacity: .7; }
+.dial__svg.is-inactive { cursor: default; opacity: .48; }
 .dial__track, .dial__progress, .dial__hit-area { fill: none; }
-.dial__track { stroke: rgba(205, 233, 255, .48); stroke-width: 15; stroke-linecap: round; }
+.dial__track { stroke: rgba(205, 233, 255, .48); stroke-width: 15; stroke-linecap: round; transition: opacity .28s ease, stroke .28s ease; }
 .dial__progress { stroke: #fff; stroke-width: 15; stroke-linecap: round; pointer-events: none; }
 .dial__hit-area { stroke: transparent; stroke-width: 48; stroke-linecap: round; }
 .dial__knob { fill: #fff; pointer-events: none; filter: drop-shadow(0 3px 5px rgba(0, 60, 145, .2)); }
+.dial.is-fan-only .dial__track { stroke: rgba(205, 233, 255, .56); }
 
 .dial__readout {
   position: absolute;
@@ -241,6 +243,9 @@ button:disabled { cursor: default; opacity: .38; }
 .round-step { display: grid; place-items: center; width: 44px; height: 44px; border: 0; border-radius: 50%; color: #fff; background: rgba(194, 229, 255, .28); cursor: pointer; }
 .round-step:not(:disabled):hover { background: rgba(220, 241, 255, .46); box-shadow: 0 8px 18px rgba(0, 67, 151, .18); }
 .fan-summary { position: absolute; top: 181px; left: 0; right: 0; text-align: center; color: #d9efff; font-size: 13px; text-transform: capitalize; }
+.fan-mode-readout { position: absolute; top: 115px; left: 0; right: 0; display: grid; justify-items: center; gap: 10px; text-align: center; }
+.fan-mode-title { color: #fff; font-size: 49px; font-weight: 300; line-height: 1; letter-spacing: -1px; }
+.fan-mode-speed { color: #d9efff; font-size: 14px; line-height: 1; text-transform: capitalize; }
 .dial__minimum, .dial__maximum { position: absolute; top: 244px; font-size: 11px; font-weight: 700; }
 .dial__minimum { left: 75px; }
 .dial__maximum { right: 75px; }

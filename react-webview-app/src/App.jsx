@@ -338,13 +338,15 @@ function TemperatureDial({ state, disabled, onCommit }) {
   const svgRef = useRef(null)
   const draggingRef = useRef(false)
   const [preview, setPreview] = useState(null)
+  const fanOnly = state?.mode === 'FAN_ONLY'
+  const fanSpeed = state?.fan_speed?.replaceAll('_', ' ').toLowerCase() ?? '—'
   const minimum = state?.minimum_temperature ?? 16
   const maximum = state?.maximum_temperature ?? 31
   const temperature = preview ?? state?.target_temperature ?? 24
   const fraction = Math.max(0, Math.min(1, (temperature - minimum) / (maximum - minimum)))
   const knob = arcPoint(ARC.start + ARC.sweep * fraction)
 
-  useEffect(() => setPreview(null), [state?.target_temperature])
+  useEffect(() => setPreview(null), [state?.mode, state?.target_temperature])
 
   const temperatureAtPointer = useCallback(
     (event) => {
@@ -363,7 +365,7 @@ function TemperatureDial({ state, disabled, onCommit }) {
   )
 
   const beginDrag = (event) => {
-    if (disabled) return
+    if (disabled || fanOnly) return
     draggingRef.current = true
     event.currentTarget.setPointerCapture(event.pointerId)
     setPreview(temperatureAtPointer(event))
@@ -388,10 +390,13 @@ function TemperatureDial({ state, disabled, onCommit }) {
   }
 
   return (
-    <section className="dial" aria-label="Temperature control">
+    <section
+      className={`dial ${fanOnly ? 'is-fan-only' : ''}`}
+      aria-label={fanOnly ? `Fan mode, ${fanSpeed} speed` : 'Temperature control'}
+    >
       <svg
         ref={svgRef}
-        className={`dial__svg ${disabled ? 'is-disabled' : ''}`}
+        className={`dial__svg ${disabled ? 'is-disabled' : ''} ${fanOnly ? 'is-inactive' : ''}`}
         viewBox="0 0 440 310"
         onPointerDown={beginDrag}
         onPointerMove={moveDrag}
@@ -402,40 +407,51 @@ function TemperatureDial({ state, disabled, onCommit }) {
         }}
       >
         <path className="dial__track" d={ARC_PATH} pathLength="100" />
-        <path
-          className="dial__progress"
-          d={ARC_PATH}
-          pathLength="100"
-          strokeDasharray={`${fraction * 100} 100`}
-        />
-        <path className="dial__hit-area" d={ARC_PATH} />
-        <circle className="dial__knob" cx={knob.x} cy={knob.y} r="11" />
+        {!fanOnly && (
+          <>
+            <path
+              className="dial__progress"
+              d={ARC_PATH}
+              pathLength="100"
+              strokeDasharray={`${fraction * 100} 100`}
+            />
+            <path className="dial__hit-area" d={ARC_PATH} />
+            <circle className="dial__knob" cx={knob.x} cy={knob.y} r="11" />
+          </>
+        )}
       </svg>
 
-      <div className="dial__readout">
-        <button
-          className="round-step"
-          disabled={disabled || temperature <= minimum}
-          onClick={() => step(-1)}
-          aria-label="Decrease temperature"
-        >
-          <UiIcon icon={Minus} size={22} />
-        </button>
-        <div className="temperature">{Math.round(temperature)}<small>°C</small></div>
-        <button
-          className="round-step"
-          disabled={disabled || temperature >= maximum}
-          onClick={() => step(1)}
-          aria-label="Increase temperature"
-        >
-          <UiIcon icon={Plus} size={22} />
-        </button>
-      </div>
-      <div className="fan-summary">
-        Fan&nbsp; {state?.fan_speed?.replaceAll('_', ' ').toLowerCase() ?? '—'}
-      </div>
-      <span className="dial__minimum">{minimum}°C</span>
-      <span className="dial__maximum">{maximum}°C</span>
+      {fanOnly ? (
+        <div className="fan-mode-readout">
+          <div className="fan-mode-title">Fan</div>
+          <div className="fan-mode-speed">{fanSpeed}</div>
+        </div>
+      ) : (
+        <>
+          <div className="dial__readout">
+            <button
+              className="round-step"
+              disabled={disabled || temperature <= minimum}
+              onClick={() => step(-1)}
+              aria-label="Decrease temperature"
+            >
+              <UiIcon icon={Minus} size={22} />
+            </button>
+            <div className="temperature">{Math.round(temperature)}<small>°C</small></div>
+            <button
+              className="round-step"
+              disabled={disabled || temperature >= maximum}
+              onClick={() => step(1)}
+              aria-label="Increase temperature"
+            >
+              <UiIcon icon={Plus} size={22} />
+            </button>
+          </div>
+          <div className="fan-summary">Fan&nbsp; {fanSpeed}</div>
+          <span className="dial__minimum">{minimum}°C</span>
+          <span className="dial__maximum">{maximum}°C</span>
+        </>
+      )}
     </section>
   )
 }
